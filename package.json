@@ -13,14 +13,14 @@
     "ios/Plugin/",
     "RecognizebvCapacitorPluginMsauth.podspec"
   ],
-  "author": "Recognize",
-  "license": "LGPL-3.0",
+  "author": "Velocity",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/recognizegroup/capacitor-plugin-msauth.git"
+    "url": "https://github.com/VelocityCubed/capacitor-plugin-msauth-v2.git"
   },
   "bugs": {
-    "url": "https://github.com/recognizegroup/capacitor-plugin-msauth/issues"
+    "url": "https://github.com/VelocityCubed/capacitor-plugin-msauth-v2/issues"
   },
   "keywords": [
     "capacitor",
