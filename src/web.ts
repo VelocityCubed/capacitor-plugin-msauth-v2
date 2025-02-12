@@ -5,11 +5,11 @@ import type { BaseOptions, MsAuthPlugin } from './definitions';
 
 interface WebBaseOptions extends BaseOptions {
   redirectUri?: string;
-  state?: string;
 }
 
 interface WebLoginOptions extends WebBaseOptions {
   scopes: string[];
+  extraQueryParameters?: { [key: string]: string };
 }
 
 type WebLogoutOptions = WebBaseOptions;
@@ -26,7 +26,7 @@ export class MsAuth extends WebPlugin implements MsAuthPlugin {
 
     try {
       return await this.acquireTokenSilently(context, options.scopes).catch(() =>
-        this.acquireTokenInteractively(context, options.scopes)
+        this.acquireTokenInteractively(context, options)
       );
     } catch (error) {
       console.error('MSAL: Error occurred while logging in', error);
@@ -57,7 +57,6 @@ export class MsAuth extends WebPlugin implements MsAuthPlugin {
         authority: options.authorityUrl ?? `https://login.microsoftonline.com/${options.tenant ?? 'common'}`,
         knownAuthorities: options.knownAuthorities,
         redirectUri: options.redirectUri ?? this.getCurrentUrl(),
-        state: options.state,
       },
       cache: {
         cacheLocation: 'localStorage',
@@ -71,13 +70,17 @@ export class MsAuth extends WebPlugin implements MsAuthPlugin {
     return window.location.href.split(/[?#]/)[0];
   }
 
-  private async acquireTokenInteractively(context: PublicClientApplication, scopes: string[]): Promise<AuthResult> {
+  private async acquireTokenInteractively(
+    context: PublicClientApplication,
+    webLoginOptions: WebLoginOptions
+  ): Promise<AuthResult> {
     const { accessToken, idToken } = await context.acquireTokenPopup({
-      scopes,
       prompt: 'select_account',
+      scopes: webLoginOptions.scopes,
+      extraQueryParameters: webLoginOptions.extraQueryParameters,
     });
 
-    return { accessToken, idToken, scopes };
+    return { accessToken, idToken, scopes: webLoginOptions.scopes };
   }
 
   private async acquireTokenSilently(context: PublicClientApplication, scopes: string[]): Promise<AuthResult> {

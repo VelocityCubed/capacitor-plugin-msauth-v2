@@ -139,14 +139,17 @@ public class MsAuthPlugin extends Plugin {
         return context.getConfiguration().getDefaultAuthority().getAuthorityURL().toString();
     }
 
-    private void acquireToken(ISingleAccountPublicClientApplication context, List<String> scopes, Prompt prompt, final TokenResultCallback callback)
-        throws MsalException, InterruptedException {
+    private void acquireToken(
+        ISingleAccountPublicClientApplication context,
+        List<String> scopes,
+        Prompt prompt,
+        final TokenResultCallback callback
+    ) throws MsalException, InterruptedException {
         String authority = getAuthorityUrl(context);
 
         ICurrentAccountResult result = context.getCurrentAccount();
         if (result.getCurrentAccount() != null) {
             try {
-
                 Logger.info("Starting silent login flow");
                 AcquireTokenSilentParameters.Builder builder = new AcquireTokenSilentParameters.Builder()
                     .withScopes(scopes)
