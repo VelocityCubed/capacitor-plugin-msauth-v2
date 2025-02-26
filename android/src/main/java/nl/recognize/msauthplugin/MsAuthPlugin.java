@@ -16,8 +16,12 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -72,10 +76,22 @@ public class MsAuthPlugin extends Plugin {
                 }
             }
 
+            List<Map.Entry<String, String>> extraQueryParameters = new ArrayList<>();
+            if (call.hasOption("extraQueryParameters")) {
+                JSObject extraParams = call.getObject("extraQueryParameters");
+                if (extraParams != null) {
+                    for (Iterator<String> it = extraParams.keys(); it.hasNext();) {
+                        String key = it.next();
+                        extraQueryParameters.add(new AbstractMap.SimpleEntry<>(key, extraParams.getString(key)));
+                    }
+                }
+            }
+
             this.acquireToken(
                     context,
                     call.getArray("scopes").toList(),
                     prompt,
+                    extraQueryParameters,
                     tokenResult -> {
                         if (tokenResult != null) {
                             JSObject result = new JSObject();
@@ -143,6 +159,7 @@ public class MsAuthPlugin extends Plugin {
         ISingleAccountPublicClientApplication context,
         List<String> scopes,
         Prompt prompt,
+        List<Map.Entry<String, String>> extraQueryParameters,
         final TokenResultCallback callback
     ) throws MsalException, InterruptedException {
         String authority = getAuthorityUrl(context);
@@ -177,34 +194,39 @@ public class MsAuthPlugin extends Plugin {
         AcquireTokenParameters.Builder params = new AcquireTokenParameters.Builder()
             .startAuthorizationFromActivity(this.getActivity())
             .withScopes(scopes)
-            .withPrompt(prompt)
-            .withCallback(
-                new AuthenticationCallback() {
-                    @Override
-                    public void onCancel() {
-                        Logger.info("Login cancelled");
-                        callback.tokenReceived(null);
-                    }
+            .withPrompt(prompt);
 
-                    @Override
-                    public void onSuccess(IAuthenticationResult authenticationResult) {
-                        TokenResult tokenResult = new TokenResult();
+        if (!extraQueryParameters.isEmpty()) {
+            params.withAuthorizationQueryStringParameters(extraQueryParameters);
+        }
 
-                        IAccount account = authenticationResult.getAccount();
-                        tokenResult.setAccessToken(authenticationResult.getAccessToken());
-                        tokenResult.setIdToken(account.getIdToken());
-                        tokenResult.setScopes(authenticationResult.getScope());
-
-                        callback.tokenReceived(tokenResult);
-                    }
-
-                    @Override
-                    public void onError(MsalException ex) {
-                        Logger.error("Unable to acquire token interactively", ex);
-                        callback.tokenReceived(null);
-                    }
+        params.withCallback(
+            new AuthenticationCallback() {
+                @Override
+                public void onCancel() {
+                    Logger.info("Login cancelled");
+                    callback.tokenReceived(null);
                 }
-            );
+
+                @Override
+                public void onSuccess(IAuthenticationResult authenticationResult) {
+                    TokenResult tokenResult = new TokenResult();
+
+                    IAccount account = authenticationResult.getAccount();
+                    tokenResult.setAccessToken(authenticationResult.getAccessToken());
+                    tokenResult.setIdToken(account.getIdToken());
+                    tokenResult.setScopes(authenticationResult.getScope());
+
+                    callback.tokenReceived(tokenResult);
+                }
+
+                @Override
+                public void onError(MsalException ex) {
+                    Logger.error("Unable to acquire token interactively", ex);
+                    callback.tokenReceived(null);
+                }
+            }
+        );
 
         if (result.getCurrentAccount() != null) {
             // Set loginHint otherwise MSAL throws an exception because of mismatched account
