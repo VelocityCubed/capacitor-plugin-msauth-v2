@@ -16,6 +16,8 @@ public class MsAuthPlugin: CAPPlugin {
 
         let scopes = call.getArray("scopes", String.self) ?? []
 
+        let extraQueryParameters = call.getObject("extraQueryParameters") as? [String: String] ?? [:]
+
         var promptType: MSALPromptType = .selectAccount
         if let prompt = call.getString("prompt")?.lowercased() {
             switch prompt {
@@ -49,11 +51,11 @@ public class MsAuthPlugin: CAPPlugin {
 
         loadCurrentAccount(applicationContext: context) { (account) in
             guard let currentAccount = account else {
-                self.acquireTokenInteractively(applicationContext: context, scopes: scopes, promptType: promptType, completion: completion)
+                self.acquireTokenInteractively(applicationContext: context, scopes: scopes, promptType: promptType, extraQueryParameters: extraQueryParameters, completion: completion)
                 return
             }
 
-            self.acquireTokenSilently(applicationContext: context, scopes: scopes, account: currentAccount, completion: completion)
+            self.acquireTokenSilently(applicationContext: context, scopes: scopes, account: currentAccount, extraQueryParameters: extraQueryParameters, completion: completion)
         }
     }
 
@@ -242,7 +244,7 @@ public class MsAuthPlugin: CAPPlugin {
 
     }
 
-    func acquireTokenInteractively(applicationContext: MSALPublicClientApplication, scopes: [String], promptType: MSALPromptType, completion: @escaping (MSALResult?) -> Void) {
+    func acquireTokenInteractively(applicationContext: MSALPublicClientApplication, scopes: [String], promptType: MSALPromptType, extraQueryParameters: [String: String], completion: @escaping (MSALResult?) -> Void) {
         guard let bridgeViewController = bridge?.viewController else {
             print("Unable to get Capacitor bridge.viewController")
 
@@ -254,6 +256,7 @@ public class MsAuthPlugin: CAPPlugin {
         let parameters = MSALInteractiveTokenParameters(scopes: scopes, webviewParameters: wvParameters)
 
         parameters.promptType = promptType
+        parameters.extraQueryParameters = extraQueryParameters
 
         applicationContext.acquireToken(with: parameters) { (result, error) in
             if let error = error {
@@ -274,8 +277,9 @@ public class MsAuthPlugin: CAPPlugin {
         }
     }
 
-    func acquireTokenSilently(applicationContext: MSALPublicClientApplication, scopes: [String], account: MSALAccount, completion: @escaping (MSALResult?) -> Void) {
+    func acquireTokenSilently(applicationContext: MSALPublicClientApplication, scopes: [String], account: MSALAccount, extraQueryParameters: [String: String], completion: @escaping (MSALResult?) -> Void) {
         let parameters = MSALSilentTokenParameters(scopes: scopes, account: account)
+        parameters.extraQueryParameters = extraQueryParameters
 
         applicationContext.acquireTokenSilent(with: parameters) { (result, error) in
 
@@ -286,7 +290,7 @@ public class MsAuthPlugin: CAPPlugin {
 
                     if nsError.code == MSALError.interactionRequired.rawValue {
                         DispatchQueue.main.async {
-                            self.acquireTokenInteractively(applicationContext: applicationContext, scopes: scopes, promptType: .selectAccount, completion: completion)
+                            self.acquireTokenInteractively(applicationContext: applicationContext, scopes: scopes, promptType: .selectAccount, extraQueryParameters: extraQueryParameters, completion: completion)
                         }
                         return
                     }
