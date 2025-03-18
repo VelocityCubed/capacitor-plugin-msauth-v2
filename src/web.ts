@@ -35,6 +35,30 @@ export class MsAuth extends WebPlugin implements MsAuthPlugin {
     }
   }
 
+  async loginInteractively(options: WebLoginOptions): Promise<AuthResult> {
+    const context = this.createContext(options);
+
+    try {
+      return this.acquireTokenInteractively(context, options);
+    } catch (error) {
+      console.error('MSAL: Error occurred while logging in', error);
+
+      throw error;
+    }
+  }
+
+  async loginSilently(options: WebLoginOptions): Promise<AuthResult> {
+    const context = this.createContext(options);
+
+    try {
+      return await this.acquireTokenSilently(context, options.scopes);
+    } catch (error) {
+      console.error('MSAL: Error occurred while attempting silent login', error);
+
+      throw error;
+    }
+  }
+
   logout(options: WebLogoutOptions): Promise<void> {
     const context = this.createContext(options);
 

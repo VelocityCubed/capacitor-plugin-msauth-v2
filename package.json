@@ -1,6 +1,6 @@
 {
   "name": "@velocitycubed/capacitor-plugin-msauth-v2",
-  "version": "3.6.2-10",
+  "version": "3.6.2-13",
   "description": "This plugin enables MSAL support for Capacitor.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

@@ -19,6 +19,8 @@ export type LogoutOptions = BaseOptions;
 
 export interface MsAuthPlugin {
   login(options: LoginOptions): Promise<{ accessToken: string; idToken: string; scopes: string[] }>;
+  loginInteractively(options: LoginOptions): Promise<{ accessToken: string; idToken: string; scopes: string[] }>;
+  loginSilently(options: LoginOptions): Promise<{ accessToken: string; idToken: string; scopes: string[] }>;
   logout(options: LogoutOptions): Promise<void>;
   logoutAll(options: LogoutOptions): Promise<void>;
 }
