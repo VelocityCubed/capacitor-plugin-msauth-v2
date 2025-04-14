@@ -113,6 +113,117 @@ public class MsAuthPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void loginSilently(final PluginCall call) {
+        try {
+            ISingleAccountPublicClientApplication context = this.createContextFromPluginCall(call);
+
+            if (context == null) {
+                call.reject("Context was null");
+                return;
+            }
+
+            List<Map.Entry<String, String>> extraQueryParameters = new ArrayList<>();
+            if (call.hasOption("extraQueryParameters")) {
+                JSObject extraParams = call.getObject("extraQueryParameters");
+                if (extraParams != null) {
+                    for (Iterator<String> it = extraParams.keys(); it.hasNext();) {
+                        String key = it.next();
+                        extraQueryParameters.add(new AbstractMap.SimpleEntry<>(key, extraParams.getString(key)));
+                    }
+                }
+            }
+
+            try {
+                TokenResult tokenResult = this.acquireTokenSilent(context, call.getArray("scopes").toList(), extraQueryParameters);
+
+                JSObject result = new JSObject();
+                result.put("accessToken", tokenResult.getAccessToken());
+                result.put("idToken", tokenResult.getIdToken());
+                JSONArray scopes = new JSONArray(Arrays.asList(tokenResult.getScopes()));
+                result.put("scopes", scopes);
+
+                call.resolve(result);
+            } catch (MsalUiRequiredException ex) {
+                Logger.error("Silent login failed", ex);
+                call.reject("Silent login failed, interactive login required");
+            }
+        } catch (Exception ex) {
+            Logger.error("Unable to login silently: " + ex.getMessage(), ex);
+            call.reject("Unable to fetch access token silently.");
+        }
+    }
+
+    @PluginMethod
+    public void loginInteractively(final PluginCall call) {
+        try {
+            ISingleAccountPublicClientApplication context = this.createContextFromPluginCall(call);
+
+            if (context == null) {
+                call.reject("Context was null");
+                return;
+            }
+
+            Prompt prompt = Prompt.SELECT_ACCOUNT;
+            if (call.hasOption("prompt")) {
+                switch (call.getString("prompt").toLowerCase()) {
+                    case "select_account":
+                        prompt = Prompt.SELECT_ACCOUNT;
+                        break;
+                    case "login":
+                        prompt = Prompt.LOGIN;
+                        break;
+                    case "consent":
+                        prompt = Prompt.CONSENT;
+                        break;
+                    case "none":
+                        prompt = Prompt.WHEN_REQUIRED;
+                        break;
+                    case "create":
+                        prompt = Prompt.CREATE;
+                        break;
+                    default:
+                        Logger.warn("Unrecognized prompt option: " + call.getString("prompt"));
+                        break;
+                }
+            }
+
+            List<Map.Entry<String, String>> extraQueryParameters = new ArrayList<>();
+            if (call.hasOption("extraQueryParameters")) {
+                JSObject extraParams = call.getObject("extraQueryParameters");
+                if (extraParams != null) {
+                    for (Iterator<String> it = extraParams.keys(); it.hasNext();) {
+                        String key = it.next();
+                        extraQueryParameters.add(new AbstractMap.SimpleEntry<>(key, extraParams.getString(key)));
+                    }
+                }
+            }
+
+            this.acquireTokenInteractively(
+                    context,
+                    call.getArray("scopes").toList(),
+                    prompt,
+                    extraQueryParameters,
+                    tokenResult -> {
+                        if (tokenResult != null) {
+                            JSObject result = new JSObject();
+                            result.put("accessToken", tokenResult.getAccessToken());
+                            result.put("idToken", tokenResult.getIdToken());
+                            JSONArray scopes = new JSONArray(Arrays.asList(tokenResult.getScopes()));
+                            result.put("scopes", scopes);
+
+                            call.resolve(result);
+                        } else {
+                            call.reject("Unable to obtain access token");
+                        }
+                    }
+                );
+        } catch (Exception ex) {
+            Logger.error("Unable to login interactively: " + ex.getMessage(), ex);
+            call.reject("Unable to fetch access token interactively.");
+        }
+    }
+
+    @PluginMethod
     public void logout(final PluginCall call) {
         try {
             ISingleAccountPublicClientApplication context = this.createContextFromPluginCall(call);
@@ -167,29 +278,57 @@ public class MsAuthPlugin extends Plugin {
         ICurrentAccountResult result = context.getCurrentAccount();
         if (result.getCurrentAccount() != null) {
             try {
-                Logger.info("Starting silent login flow");
-                AcquireTokenSilentParameters.Builder builder = new AcquireTokenSilentParameters.Builder()
-                    .withScopes(scopes)
-                    .fromAuthority(authority)
-                    .forAccount(result.getCurrentAccount());
-
-                AcquireTokenSilentParameters parameters = builder.build();
-                IAuthenticationResult silentAuthResult = context.acquireTokenSilent(parameters);
-                IAccount account = silentAuthResult.getAccount();
-
-                TokenResult tokenResult = new TokenResult();
-                tokenResult.setAccessToken(silentAuthResult.getAccessToken());
-                tokenResult.setIdToken(account.getIdToken());
-                tokenResult.setScopes(silentAuthResult.getScope());
-
+                // Try silent login first
+                TokenResult tokenResult = acquireTokenSilent(context, scopes, extraQueryParameters);
                 callback.tokenReceived(tokenResult);
-
                 return;
             } catch (MsalUiRequiredException ex) {
                 Logger.error("Silent login failed", ex);
+                // Fall through to interactive login
             }
         }
 
+        // Proceed with interactive login
+        acquireTokenInteractively(context, scopes, prompt, extraQueryParameters, callback);
+    }
+
+    private TokenResult acquireTokenSilent(
+        ISingleAccountPublicClientApplication context,
+        List<String> scopes,
+        List<Map.Entry<String, String>> extraQueryParameters
+    ) throws MsalException, InterruptedException {
+        String authority = getAuthorityUrl(context);
+
+        ICurrentAccountResult result = context.getCurrentAccount();
+        if (result.getCurrentAccount() != null) {
+            Logger.info("Starting silent login flow");
+            AcquireTokenSilentParameters.Builder builder = new AcquireTokenSilentParameters.Builder()
+                .withScopes(scopes)
+                .fromAuthority(authority)
+                .forAccount(result.getCurrentAccount());
+
+            AcquireTokenSilentParameters parameters = builder.build();
+            IAuthenticationResult silentAuthResult = context.acquireTokenSilent(parameters);
+            IAccount account = silentAuthResult.getAccount();
+
+            TokenResult tokenResult = new TokenResult();
+            tokenResult.setAccessToken(silentAuthResult.getAccessToken());
+            tokenResult.setIdToken(account.getIdToken());
+            tokenResult.setScopes(silentAuthResult.getScope());
+
+            return tokenResult;
+        }
+
+        throw new MsalUiRequiredException("No account found", "No account found for silent authentication", null);
+    }
+
+    private void acquireTokenInteractively(
+        ISingleAccountPublicClientApplication context,
+        List<String> scopes,
+        Prompt prompt,
+        List<Map.Entry<String, String>> extraQueryParameters,
+        final TokenResultCallback callback
+    ) throws MsalException, InterruptedException {
         Logger.info("Starting interactive login flow");
         AcquireTokenParameters.Builder params = new AcquireTokenParameters.Builder()
             .startAuthorizationFromActivity(this.getActivity())
@@ -228,6 +367,7 @@ public class MsAuthPlugin extends Plugin {
             }
         );
 
+        ICurrentAccountResult result = context.getCurrentAccount();
         if (result.getCurrentAccount() != null) {
             // Set loginHint otherwise MSAL throws an exception because of mismatched account
             params.withLoginHint(result.getCurrentAccount().getUsername());

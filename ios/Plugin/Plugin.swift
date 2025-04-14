@@ -59,6 +59,106 @@ public class MsAuthPlugin: CAPPlugin {
         }
     }
 
+    @objc func loginSilently(_ call: CAPPluginCall) {
+        guard let context = createContextFromPluginCall(call) else {
+            call.reject("Unable to create context, check logs")
+            return
+        }
+    
+        let scopes = call.getArray("scopes", String.self) ?? []
+        let extraQueryParameters = call.getObject("extraQueryParameters") as? [String: String] ?? [:]
+    
+        let completion: (MSALResult?) -> Void = { msalResult in
+            guard let result = msalResult else {
+                call.reject("Unable to obtain access token")
+                return
+            }
+    
+            call.resolve([
+                "accessToken": result.accessToken,
+                "idToken": result.idToken,
+                "scopes": result.scopes
+            ])
+        }
+    
+        loadCurrentAccount(applicationContext: context) { (account) in
+            guard let currentAccount = account else {
+                call.reject("Silent login failed, no account found")
+                return
+            }
+    
+            // Only try silent token acquisition, don't fall back to interactive
+            let parameters = MSALSilentTokenParameters(scopes: scopes, account: currentAccount)
+            parameters.extraQueryParameters = extraQueryParameters
+    
+            context.acquireTokenSilent(with: parameters) { (result, error) in
+                if let error = error {
+                    print("Unable to acquire token silently: \(error)")
+                    call.reject("Silent login failed: \(error.localizedDescription)")
+                    return
+                }
+    
+                guard let result = result else {
+                    print("Empty result found.")
+                    call.reject("Silent login failed, empty result")
+                    return
+                }
+    
+                completion(result)
+            }
+        }
+    }
+    
+    @objc func loginInteractively(_ call: CAPPluginCall) {
+        guard let context = createContextFromPluginCall(call) else {
+            call.reject("Unable to create context, check logs")
+            return
+        }
+    
+        let scopes = call.getArray("scopes", String.self) ?? []
+        let extraQueryParameters = call.getObject("extraQueryParameters") as? [String: String] ?? [:]
+    
+        var promptType: MSALPromptType = .selectAccount
+        if let prompt = call.getString("prompt")?.lowercased() {
+            switch prompt {
+            case "select_account":
+                promptType = .selectAccount
+            case "login":
+                promptType = .login
+            case "consent":
+                promptType = .consent
+            case "none":
+                promptType = .promptIfNecessary
+            case "create":
+                promptType = .create
+            default:
+                print("Unrecognized prompt option: \(prompt)")
+            }
+        }
+    
+        let completion: (MSALResult?) -> Void = { msalResult in
+            guard let result = msalResult else {
+                call.reject("Unable to obtain access token")
+                return
+            }
+    
+            call.resolve([
+                "accessToken": result.accessToken,
+                "idToken": result.idToken,
+                "scopes": result.scopes
+            ])
+        }
+    
+        // Always use interactive authentication, regardless of current account
+        self.acquireTokenInteractively(
+            applicationContext: context, 
+            scopes: scopes, 
+            promptType: promptType, 
+            extraQueryParameters: extraQueryParameters, 
+            completion: completion
+        )
+    }
+
     @objc func logout(_ call: CAPPluginCall) {
         guard let context = createContextFromPluginCall(call) else {
             call.reject("Unable to create context, check logs")
