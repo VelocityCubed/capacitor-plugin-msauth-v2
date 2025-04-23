@@ -175,6 +175,19 @@ public class MsAuthPlugin extends Plugin {
                 return;
             }
 
+            // Force sign out first to ensure we're starting fresh
+            try {
+                ICurrentAccountResult result = context.getCurrentAccount();
+                if (result.getCurrentAccount() != null) {
+                    // Sign out synchronously before proceeding - this is important
+                    context.signOut();
+                    Logger.info("Signed out existing account before interactive login");
+                }
+            } catch (Exception e) {
+                Logger.warn("Error checking/signing out current account", e);
+                // Continue anyway - we'll try the login
+            }
+
             Prompt prompt = Prompt.SELECT_ACCOUNT;
             if (call.hasOption("prompt")) {
                 switch (call.getString("prompt").toLowerCase()) {
