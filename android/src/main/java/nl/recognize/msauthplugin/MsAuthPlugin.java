@@ -184,7 +184,7 @@ public class MsAuthPlugin extends Plugin {
                     Logger.info("Signed out existing account before interactive login");
                 }
             } catch (Exception e) {
-                Logger.warn("Error checking/signing out current account", e);
+                Logger.warn("Error checking/signing out current account", e.getMessage());
                 // Continue anyway - we'll try the login
             }
 
